@@ -1,66 +1,86 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\UserVerifikasi;
-use App\Models\UserProfile; // Model UserProfile
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
-
 class UserVerifikasiController extends Controller
 {
+    /**
+     * Upload verification documents
+     */
     public function uploadFiles(Request $request)
-{
-    $user = Auth::user();
+    {
+        $user = Auth::user();
 
-    if (!$user) {
-        return response()->json(['message' => 'Unauthorized.'], 401);
-    }
+        // Validate request
+        $request->validate([
+            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
+        ]);
 
-    // Cek apakah user memiliki profil yang sudah lengkap
-    $userProfile = UserProfile::where('user_id', $user->id)->first();
+        // Check if user already has a verification submission
+        $verification = UserVerifikasi::where('user_id', $user->id)->first();
 
-    if (!$userProfile) {
-        return response()->json([
-            'message' => 'Silakan lengkapi profil terlebih dahulu sebelum mengunggah file.'
-        ], 403);
-    }
-
-    // Pastikan semua field penting sudah diisi
-    $requiredFields = ['nama_lengkap', 'panggilan', 'nim', 'whatsapp', 'program_studi', 'divisi', 'sub_divisi'];
-    foreach ($requiredFields as $field) {
-        if (empty($userProfile->$field)) {
-            return response()->json(['message' => 'Profil belum lengkap, harap lengkapi terlebih dahulu.'], 403);
+        // If there's a previous verification and it was rejected, delete the old document
+        if ($verification && $verification->status === 'rejected') {
+            if ($verification->document_path) {
+                Storage::disk('public')->delete($verification->document_path);
+            }
+            $verification->delete();
+            $verification = null;
         }
+
+        // If the user already has a pending or verified verification, return an error
+        if ($verification) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You already have a ' . $verification->status . ' verification submission'
+            ], 400);
+        }
+
+        // Store the document
+        $documentPath = $request->file('document')->store('verification_documents', 'public');
+
+        // Create verification record
+        $verification = UserVerifikasi::create([
+            'user_id' => $user->id,
+            'document_path' => $documentPath,
+            'status' => 'pending',
+            'notes' => null
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verification document uploaded successfully',
+            'data' => $verification
+        ], 201);
     }
 
-    // Validasi file
-    $request->validate([
-        'krs' => 'required|file|mimes:pdf|max:2048',
-        'payment_proof' => 'required|file|mimes:jpg,jpeg,png|max:2048',
-    ]);
+    /**
+     * Check verification status
+     */
+    public function checkVerificationStatus()
+    {
+        $user = Auth::user();
+        $verification = UserVerifikasi::where('user_id', $user->id)->first();
 
-    // Simpan file di storage
-    $krsPath = $request->file('krs')->store('uploads/krs', 'public');
-    $paymentProofPath = $request->file('payment_proof')->store('uploads/payment_proof', 'public');
+        if (!$verification) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Verification not submitted yet',
+                'status' => null
+            ]);
+        }
 
-    // Simpan data verifikasi ke database
-    $userVerifikasi = UserVerifikasi::updateOrCreate(
-        ['user_id' => $user->id], 
-        [
-            'krs_path' => $krsPath,
-            'payment_proof_path' => $paymentProofPath
-        ]
-    );
-
-    return response()->json([
-        'message' => 'File berhasil diunggah!',
-        'data' => [
-            'krs_url' => Storage::url($userVerifikasi->krs_path),
-            'payment_proof_url' => Storage::url($userVerifikasi->payment_proof_path),
-        ]
-    ], 201);
-}
-
+        return response()->json([
+            'success' => true,
+            'status' => $verification->status,
+            'notes' => $verification->notes,
+            'document_url' => $verification->document_path ? Storage::url($verification->document_path) : null,
+            'submitted_at' => $verification->created_at
+        ]);
+    }
 }

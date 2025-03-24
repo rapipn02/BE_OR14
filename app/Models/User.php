@@ -23,7 +23,8 @@ class User extends Authenticatable
         'email',
         'password',
         'verification_token', // Tambahkan ini
-        "email_verified_at" // Pastikan ini tetap ada
+        "email_verified_at", // Pastikan ini tetap ada
+        "role"
     ];
 
     /**
@@ -48,5 +49,10 @@ class User extends Authenticatable
     public function profile()
     {
         return $this->hasOne(UserProfile::class);
+    }
+
+    public function verificationDocuments()
+    {
+        return $this->hasOne(UserVerifikasi::class);
     }
 }

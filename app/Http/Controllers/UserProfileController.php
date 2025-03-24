@@ -1,139 +1,212 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\UserProfile;
-use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 
 class UserProfileController extends Controller
 {
-    // **1. Store (Membuat Profil)**
-    public function store(Request $request, $id)
+    /**
+     * Get user profile
+     */
+    public function getProfile()
     {
-        $request->validate([
-            'nama_lengkap' => 'required|string|max:255',
-            'panggilan' => 'required|string|max:50',
-            'nim' => 'nullable|string|max:20',
-            'whatsapp' => 'nullable|string|max:15',
-            'program_studi' => 'nullable|string|max:100',
-            'divisi' => 'nullable|string|max:100',
-            'sub_divisi' => 'nullable|string|max:100',
-            'twibbon' => 'nullable|url',
-            'photo' => 'nullable|image|max:2048', // Maks 2MB
-        ]);
+        $user = Auth::user();
+        $profile = UserProfile::where('user_id', $user->id)->first();
 
-        // Cek apakah user ada
-        $user = User::findOrFail($id);
-
-        // Cek apakah profil sudah ada
-        if (UserProfile::where('user_id', $id)->exists()) {
-            return response()->json(['message' => 'Profil sudah ada'], 400);
+        if (!$profile) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Profile not found'
+            ], 404);
         }
 
-        // Simpan foto jika diunggah
+        return response()->json([
+            'status' => 'success',
+            'data' => $profile,
+            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+        ]);
+    }
+
+    /**
+     * Create a new profile
+     */
+    public function store(Request $request)
+    {
+        $user = Auth::user();
+
+        // Check if profile already exists
+        if (UserProfile::where('user_id', $user->id)->exists()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Profile already exists'
+            ], 400);
+        }
+
+        // Validate request
+        $validator = Validator::make($request->all(), [
+            'nama_lengkap' => 'required|string|max:255',
+            'panggilan' => 'required|string|max:50',
+            'nim' => 'required|string|max:20',
+            'whatsapp' => 'required|string|max:15',
+            'program_studi' => 'required|string|max:100',
+            'departemen' => 'nullable|string|max:100',
+            'divisi' => 'required|string|max:100',
+            'sub_divisi' => 'required|string|max:100',
+            'twibbon' => 'nullable|string',
+            'photo' => 'nullable|image|max:2048',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Handle photo upload
         $photoPath = null;
         if ($request->hasFile('photo')) {
             $photoPath = $request->file('photo')->store('profile_photos', 'public');
         }
 
-        // Simpan profil
-        $profile = UserProfile::create([
-            'user_id' => $id,
-            'nama_lengkap' => $request->nama_lengkap,
-            'panggilan' => $request->panggilan,
-            'nim' => $request->nim,
-            'whatsapp' => $request->whatsapp,
-            'program_studi' => $request->program_studi,
-            'divisi' => $request->divisi,
-            'sub_divisi' => $request->sub_divisi,
-            'twibbon' => $request->twibbon,
-            'photo' => $photoPath,
-        ]);
+        // Create new profile
+        $profile = new UserProfile();
+        $profile->user_id = $user->id;
+        $profile->nama_lengkap = $request->nama_lengkap;
+        $profile->panggilan = $request->panggilan;
+        $profile->nim = $request->nim;
+        $profile->whatsapp = $request->whatsapp;
+        $profile->program_studi = $request->program_studi;
+        $profile->departemen = $request->departemen;
+        $profile->divisi = $request->divisi;
+        $profile->sub_divisi = $request->sub_divisi;
+        $profile->twibbon = $request->twibbon;
+        $profile->photo = $photoPath;
+        $profile->save();
 
-        return response()->json(['message' => 'Profil berhasil dibuat', 'profile' => $profile], 201);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profile created successfully',
+            'data' => $profile,
+            'photo_url' => $photoPath ? url(Storage::url($photoPath)) : null
+        ], 201);
     }
 
-    // **2. Show (Menampilkan Profil)**
-    public function show($id)
+    /**
+     * Update profile
+     */
+    public function update(Request $request)
     {
-        $profile = UserProfile::where('user_id', $id)->first();
+        $user = Auth::user();
+        $profile = UserProfile::where('user_id', $user->id)->first();
 
         if (!$profile) {
-            return response()->json(['message' => 'Profil tidak ditemukan'], 404);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Profile not found'
+            ], 404);
         }
 
-        return response()->json($profile);
-    }
-
-    // **3. Update Profil**
-    public function update(Request $request, $id)
-    {
-        $profile = UserProfile::where('user_id', $id)->firstOrFail();
-
-        $request->validate([
-            'nama_lengkap' => 'string|max:255',
-            'panggilan' => 'string|max:50',
-            'nim' => 'nullable|string|max:20',
-            'whatsapp' => 'nullable|string|max:15',
-            'program_studi' => 'nullable|string|max:100',
-            'divisi' => 'nullable|string|max:100',
-            'sub_divisi' => 'nullable|string|max:100',
-            'twibbon' => 'nullable|url',
+        // Validate request
+        $validator = Validator::make($request->all(), [
+            'nama_lengkap' => 'required|string|max:255',
+            'panggilan' => 'required|string|max:50',
+            'nim' => 'required|string|max:20',
+            'whatsapp' => 'required|string|max:15',
+            'program_studi' => 'required|string|max:100',
+            'departemen' => 'nullable|string|max:100',
+            'divisi' => 'required|string|max:100',
+            'sub_divisi' => 'required|string|max:100',
+            'twibbon' => 'nullable|string|url',
             'photo' => 'nullable|image|max:2048',
         ]);
 
-        // Simpan foto baru jika ada
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Handle photo upload
         if ($request->hasFile('photo')) {
-            // Hapus foto lama jika ada
+            // Delete old photo if exists
             if ($profile->photo) {
                 Storage::disk('public')->delete($profile->photo);
             }
-            // Simpan foto baru
-            $profile->photo = $request->file('photo')->store('profile_photos', 'public');
+
+            // Store new photo
+            $photoPath = $request->file('photo')->store('profile_photos', 'public');
+            $profile->photo = $photoPath;
         }
 
-        // Update data profil
-        $profile->update($request->except(['photo']));
+        // Update profile
+        $profile->nama_lengkap = $request->nama_lengkap;
+        $profile->panggilan = $request->panggilan;
+        $profile->nim = $request->nim;
+        $profile->whatsapp = $request->whatsapp;
+        $profile->program_studi = $request->program_studi;
+        $profile->departemen = $request->departemen;
+        $profile->divisi = $request->divisi;
+        $profile->sub_divisi = $request->sub_divisi;
+        $profile->twibbon = $request->twibbon;
+        $profile->save();
 
-        return response()->json(['message' => 'Profil berhasil diperbarui', 'profile' => $profile]);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profile updated successfully',
+            'data' => $profile,
+            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+        ]);
     }
 
-    // **4. Delete (Hapus Profil)**
-    public function destroy($id)
+    /**
+     * Check if profile is complete
+     */
+    public function checkProfileStatus()
     {
-        $profile = UserProfile::where('user_id', $id)->firstOrFail();
+        $user = Auth::user();
+        $profile = UserProfile::where('user_id', $user->id)->first();
 
-        // Hapus foto jika ada
-        if ($profile->photo) {
-            Storage::disk('public')->delete($profile->photo);
+        if (!$profile) {
+            return response()->json([
+                'status' => 'success',
+                'is_complete' => false,
+                'profile' => null
+            ]);
         }
 
-        $profile->delete();
+        // Check required fields
+        $requiredFields = [
+            'nama_lengkap',
+            'panggilan',
+            'nim',
+            'whatsapp',
+            'program_studi',
+            'divisi',
+            'sub_divisi'
+        ];
 
-        return response()->json(['message' => 'Profil berhasil dihapus']);
-    }
-    
-
-    // UserProfileController.php
-    public function isProfileComplete($id)
-{
-    $profile = UserProfile::where('user_id', $id)->first();
-
-    if (!$profile) {
-        return response()->json(['message' => 'Profil belum dibuat'], 404);
-    }
-
-    // Cek apakah semua field wajib sudah diisi
-    $requiredFields = ['nama_lengkap', 'panggilan', 'nim', 'whatsapp', 'program_studi', 'divisi', 'sub_divisi'];
-    foreach ($requiredFields as $field) {
-        if (empty($profile->$field)) {
-            return response()->json(['message' => 'Profil belum lengkap'], 400);
+        $isComplete = true;
+        foreach ($requiredFields as $field) {
+            if (empty($profile->$field)) {
+                $isComplete = false;
+                break;
+            }
         }
+
+        return response()->json([
+            'status' => 'success',
+            'is_complete' => $isComplete,
+            'profile' => $profile,
+            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+        ]);
     }
-
-    return response()->json(['message' => 'Profil sudah lengkap'], 200);
 }
-
-}
-

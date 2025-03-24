@@ -25,23 +25,23 @@ class AuthController extends Controller
         DB::beginTransaction();
         try {
             $verificationToken = Str::random(64);
-    
+
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
                 'verification_token' => $verificationToken,
             ]);
-    
+
             Log::info('User berhasil dibuat', ['user' => $user]);
-    
+
             Mail::send('emails.verify', ['token' => $verificationToken], function ($message) use ($request) {
                 $message->to($request->email)
                         ->subject('Verifikasi Email Anda');
             });
-    
+
             DB::commit();
-    
+
             return ResponseHelper::success(
                 message: 'Akun berhasil dibuat. Silakan cek email untuk verifikasi.',
                 statuscode: 201
@@ -52,30 +52,28 @@ class AuthController extends Controller
             return ResponseHelper::error(message: 'Terjadi kesalahan, coba lagi.', statuscode: 500);
         }
     }
-    
+
 
     // VERIFY EMAIL
     // VERIFY EMAIL
     public function verifyEmail(Request $request)
     {
         $user = User::where('verification_token', $request->token)->first();
-    
+
         if (!$user) {
             return ResponseHelper::error(message: 'Token tidak valid atau sudah digunakan.', statuscode: 400);
         }
-    
+
         // Pastikan update berjalan
         $user->email_verified_at = now();
         $user->verification_token = null;
-    
+
         if ($user->save()) {
             return ResponseHelper::success(message: 'Email berhasil diverifikasi. Anda sekarang bisa login.', statuscode: 200);
         } else {
             return ResponseHelper::error(message: 'Gagal memperbarui status verifikasi.', statuscode: 500);
         }
     }
-    
-
 
 
     // LOGIN
@@ -106,7 +104,7 @@ class AuthController extends Controller
     {
         try {
             $user = Auth::user();
-            return $user 
+            return $user
                 ? ResponseHelper::success(message: 'Berhasil mengambil data profile', data: $user, statuscode: 200)
                 : ResponseHelper::error(message: 'Gagal mengambil data', statuscode: 400);
         } catch (Exception $e) {

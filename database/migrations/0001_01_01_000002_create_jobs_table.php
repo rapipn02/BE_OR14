@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2025_03_23_000009_create_jobs_tables.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;

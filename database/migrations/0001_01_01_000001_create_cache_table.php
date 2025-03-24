@@ -1,4 +1,5 @@
 <?php
+// database/migrations/2025_03_23_000008_create_cache_tables.php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
