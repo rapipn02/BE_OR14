@@ -158,6 +158,7 @@ class ExamController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'division_id' => 'required|exists:divisions,id',
+            'duration' => 'nullable|integer|min:5',
         ]);
 
         if ($validator->fails()) {
@@ -183,6 +184,7 @@ class ExamController extends Controller
         $exam = Exam::create([
             'user_id' => Auth::id(),
             'division_id' => $request->division_id,
+            'duration' => $request->duration ?? 60, // Default 60 menit jika tidak diisi
             'start_time' => Carbon::now(),
             'status' => 'ongoing'
         ]);
@@ -192,7 +194,8 @@ class ExamController extends Controller
             'message' => 'Exam started successfully',
             'data' => [
                 'exam_id' => $exam->id,
-                'start_time' => $exam->start_time
+                'start_time' => $exam->start_time,
+                'duration' => $exam->duration
             ]
         ]);
     }
@@ -285,6 +288,22 @@ class ExamController extends Controller
             ], 400);
         }
 
+        // Check if exam has expired based on duration
+        $startTime = new Carbon($exam->start_time);
+        $currentTime = Carbon::now();
+        $elapsedMinutes = $startTime->diffInMinutes($currentTime);
+
+        if ($elapsedMinutes >= $exam->duration) {
+            // Auto-finish the exam
+            $this->autoFinishExpiredExam($exam->id);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Your exam has expired',
+                'expired' => true
+            ], 400);
+        }
+
         // Get questions for the division
         $questions = Question::where('division_id', $exam->division_id)
             ->with(['options' => function ($query) {
@@ -302,14 +321,47 @@ class ExamController extends Controller
             $question->user_answer = $userAnswers[$question->id] ?? null;
         });
 
+        // Calculate remaining time in seconds
+        $expiryTime = $startTime->addMinutes($exam->duration);
+        $remainingSeconds = max(0, $currentTime->diffInSeconds($expiryTime, false));
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'exam_id' => $exam->id,
                 'division' => $exam->division->name,
                 'start_time' => $exam->start_time->format('Y-m-d H:i:s'),
+                'duration' => $exam->duration,
+                'remaining_seconds' => $remainingSeconds,
                 'questions' => $questions
             ]
         ]);
+    }
+
+    private function autoFinishExpiredExam($examId)
+    {
+        $exam = Exam::find($examId);
+        if (!$exam || $exam->status !== 'ongoing') {
+            return;
+        }
+
+        // Calculate score
+        $answers = ExamAnswer::where('exam_id', $exam->id)->get();
+        $correctAnswers = $answers->where('is_correct', true)->count();
+        $incorrectAnswers = $answers->where('is_correct', false)->count();
+
+        // Total questions
+        $totalQuestions = Question::where('division_id', $exam->division_id)->count();
+
+        // Calculate score percentage
+        $score = $totalQuestions > 0 ? round(($correctAnswers / $totalQuestions) * 100) : 0;
+
+        // Update exam
+        $exam->end_time = Carbon::now();
+        $exam->score = $score;
+        $exam->correct_answers = $correctAnswers;
+        $exam->incorrect_answers = $incorrectAnswers;
+        $exam->status = 'expired';
+        $exam->save();
     }
 }

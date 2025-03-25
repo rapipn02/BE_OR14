@@ -48,7 +48,6 @@ class QuestionSeeder extends Seeder
 
         $this->createQuestionsWithOptions($programmingDivision->id, $programmingQuestions);
 
-        // Multimedia Division Questions
         $multimediaDivision = Division::where('code', 'multimedia')->first();
 
         $multimediaQuestions = [
@@ -83,7 +82,6 @@ class QuestionSeeder extends Seeder
 
         $this->createQuestionsWithOptions($multimediaDivision->id, $multimediaQuestions);
 
-        // SKJ Division Questions
         $skjDivision = Division::where('code', 'skj')->first();
 
         $skjQuestions = [
