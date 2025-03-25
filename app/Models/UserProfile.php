@@ -24,6 +24,8 @@ class UserProfile extends Model
         'photo'
     ];
 
+    protected $appends = ['photo_url'];
+
     /**
      * Relasi ke tabel users
      */
@@ -33,17 +35,17 @@ class UserProfile extends Model
     }
 
     /**
-     * Get photo URL attribute
+     * Get photo URL attribute with full app URL
      */
     public function getPhotoUrlAttribute()
     {
-        return $this->photo ? Storage::url($this->photo) : null;
-    }
+        if (!$this->photo) {
+            return null;
+        }
 
-    /**
-     * Append additional attributes to JSON
-     */
-    protected $appends = ['photo_url'];
+        // Generate absolute URL with domain
+        return url(Storage::url($this->photo));
+    }
 
     /**
      * Check if profile is complete

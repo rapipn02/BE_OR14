@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Validator;
 class UserProfileController extends Controller
 {
     /**
-     * Get user profile
+     * Get user profile - Make sure this method is used instead of 'show'
      */
     public function getProfile()
     {
@@ -25,10 +25,10 @@ class UserProfileController extends Controller
             ], 404);
         }
 
+        // Let the model handle the photo_url via appended attribute
         return response()->json([
             'status' => 'success',
-            'data' => $profile,
-            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+            'data' => $profile
         ]);
     }
 
@@ -90,17 +90,205 @@ class UserProfileController extends Controller
         $profile->photo = $photoPath;
         $profile->save();
 
+        // Refresh to include appended attributes
+        $profile->refresh();
+
         return response()->json([
             'status' => 'success',
             'message' => 'Profile created successfully',
-            'data' => $profile,
-            'photo_url' => $photoPath ? url(Storage::url($photoPath)) : null
+            'data' => $profile
         ], 201);
     }
 
-    /**
-     * Update profile
-     */
+
+    private function handlePhotoUpload(Request $request, UserProfile $profile = null)
+    {
+        // Periksa apakah ada file foto yang diupload
+        if (!$request->hasFile('photo')) {
+            return null;
+        }
+
+        $file = $request->file('photo');
+
+        // Log informasi file
+        \Log::info('Handling photo upload:', [
+            'file_name' => $file->getClientOriginalName(),
+            'file_size' => $file->getSize(),
+            'file_type' => $file->getMimeType()
+        ]);
+
+        // Hapus foto lama jika ada
+        if ($profile && $profile->photo) {
+            $oldPath = $profile->photo;
+            \Log::info('Deleting old photo: ' . $oldPath);
+
+            try {
+                Storage::disk('public')->delete($oldPath);
+            } catch (\Exception $e) {
+                \Log::warning('Failed to delete old photo: ' . $e->getMessage());
+            }
+        }
+
+        // Simpan foto baru dengan nama random yang unik
+        try {
+            // Gunakan sistem penamaan yang sangat unik
+            $uniqueName = uniqid('profile_', true) . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('profile_photos', $uniqueName, 'public');
+
+            // Pastikan file berhasil disimpan
+            if (!$path) {
+                \Log::error('Failed to store photo: path is empty');
+                return null;
+            }
+
+            \Log::info('Photo successfully saved at: ' . $path);
+            return $path;
+        } catch (\Exception $e) {
+            \Log::error('Exception when saving photo: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function saveProfile(Request $request)
+    {
+        $user = Auth::user();
+        $profile = UserProfile::where('user_id', $user->id)->first();
+        $isNew = !$profile;
+
+        // Log semua data request untuk debugging
+        \Log::info('Save profile request data:', $request->all());
+
+        try {
+            // Jika ini update (profile sudah ada)
+            if (!$isNew) {
+                // Validasi field yang ada saja, tanpa required
+                $rules = [];
+
+                if ($request->has('nama_lengkap')) {
+                    $rules['nama_lengkap'] = 'string|max:255';
+                }
+
+                if ($request->has('panggilan')) {
+                    $rules['panggilan'] = 'string|max:50';
+                }
+
+                if ($request->has('nim')) {
+                    $rules['nim'] = 'string|max:20';
+                }
+
+                if ($request->has('whatsapp')) {
+                    $rules['whatsapp'] = 'string|max:15';
+                }
+
+                if ($request->has('program_studi')) {
+                    $rules['program_studi'] = 'string|max:100';
+                }
+
+                if ($request->has('departemen')) {
+                    $rules['departemen'] = 'nullable|string|max:100';
+                }
+
+                if ($request->has('divisi')) {
+                    $rules['divisi'] = 'string|max:100';
+                }
+
+                if ($request->has('sub_divisi')) {
+                    $rules['sub_divisi'] = 'string|max:100';
+                }
+
+                if ($request->has('twibbon')) {
+                    $rules['twibbon'] = 'nullable|string';
+                }
+
+                if ($request->hasFile('photo')) {
+                    $rules['photo'] = 'image|max:2048';
+                }
+
+                $validator = Validator::make($request->all(), $rules);
+            } else {
+                // Validasi untuk profile baru (create)
+                $validator = Validator::make($request->all(), [
+                    'nama_lengkap' => 'required|string|max:255',
+                    'panggilan' => 'required|string|max:50',
+                    'nim' => 'required|string|max:20',
+                    'whatsapp' => 'required|string|max:15',
+                    'program_studi' => 'required|string|max:100',
+                    'divisi' => 'required|string|max:100',
+                    'sub_divisi' => 'required|string|max:100',
+                    'departemen' => 'nullable|string|max:100',
+                    'twibbon' => 'nullable|string',
+                    'photo' => 'nullable|image|max:2048',
+                ]);
+            }
+
+            if ($validator->fails()) {
+                \Log::error('Validation error:', $validator->errors()->toArray());
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Validation error',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Buat profile baru jika belum ada
+            if ($isNew) {
+                $profile = new UserProfile();
+                $profile->user_id = $user->id;
+            }
+            if ($request->hasFile('photo')) {
+                $photoPath = $this->handlePhotoUpload($request, $isNew ? null : $profile);
+
+                if ($photoPath) {
+                    $profile->photo = $photoPath;
+                    \Log::info('Setting photo path to: ' . $photoPath);
+                } else {
+                    \Log::warning('Photo upload failed, no path returned');
+                }
+            }
+
+            // Update fields lain sesuai request
+            $changes = [];
+            foreach ($request->except(['photo', '_token', '_method']) as $key => $value) {
+                if (in_array($key, $profile->getFillable()) && $key !== 'photo' && $key !== 'user_id') {
+                    $oldValue = $profile->$key;
+                    $profile->$key = $value;
+                    $changes[$key] = ['from' => $oldValue, 'to' => $value];
+                }
+            }
+
+            // Simpan perubahan ke database
+            $profile->save();
+
+            // Verifikasi bahwa perubahan tersimpan
+            $profile->refresh();
+
+            \Log::info('Profile data after save:', [
+                'id' => $profile->id,
+                'user_id' => $profile->user_id,
+                'photo' => $profile->photo,
+                'photo_url' => $profile->photo_url
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $isNew ? 'Profile created successfully' : 'Profile updated successfully',
+                'data' => $profile,
+                'changes' => $changes
+            ], $isNew ? 201 : 200);
+        } catch (\Exception $e) {
+            \Log::error('Exception in saveProfile:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An error occurred: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function update(Request $request)
     {
         $user = Auth::user();
@@ -113,18 +301,18 @@ class UserProfileController extends Controller
             ], 404);
         }
 
-        // Validate request
+        // Validasi semua field yang dikirim
         $validator = Validator::make($request->all(), [
-            'nama_lengkap' => 'required|string|max:255',
-            'panggilan' => 'required|string|max:50',
-            'nim' => 'required|string|max:20',
-            'whatsapp' => 'required|string|max:15',
-            'program_studi' => 'required|string|max:100',
-            'departemen' => 'nullable|string|max:100',
-            'divisi' => 'required|string|max:100',
-            'sub_divisi' => 'required|string|max:100',
-            'twibbon' => 'nullable|string|url',
-            'photo' => 'nullable|image|max:2048',
+            'nama_lengkap' => 'sometimes|string|max:255',
+            'panggilan' => 'sometimes|string|max:50',
+            'nim' => 'sometimes|string|max:20',
+            'whatsapp' => 'sometimes|string|max:15',
+            'program_studi' => 'sometimes|string|max:100',
+            'departemen' => 'sometimes|nullable|string|max:100',
+            'divisi' => 'sometimes|string|max:100',
+            'sub_divisi' => 'sometimes|string|max:100',
+            'twibbon' => 'sometimes|nullable|string',
+            'photo' => 'sometimes|nullable|image|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -147,23 +335,24 @@ class UserProfileController extends Controller
             $profile->photo = $photoPath;
         }
 
-        // Update profile
-        $profile->nama_lengkap = $request->nama_lengkap;
-        $profile->panggilan = $request->panggilan;
-        $profile->nim = $request->nim;
-        $profile->whatsapp = $request->whatsapp;
-        $profile->program_studi = $request->program_studi;
-        $profile->departemen = $request->departemen;
-        $profile->divisi = $request->divisi;
-        $profile->sub_divisi = $request->sub_divisi;
-        $profile->twibbon = $request->twibbon;
+        // Update data yang dikirim ke database
+        foreach ($request->all() as $key => $value) {
+            // Hanya update field yang ada dalam fillable model
+            if (in_array($key, $profile->getFillable()) && $key !== 'photo' && $key !== 'user_id') {
+                $profile->$key = $value;
+            }
+        }
+
+        // Simpan perubahan
         $profile->save();
+
+        // Refresh untuk mendapatkan data terbaru termasuk atribut tambahan
+        $profile->refresh();
 
         return response()->json([
             'status' => 'success',
             'message' => 'Profile updated successfully',
-            'data' => $profile,
-            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+            'data' => $profile
         ]);
     }
 
@@ -183,30 +372,12 @@ class UserProfileController extends Controller
             ]);
         }
 
-        // Check required fields
-        $requiredFields = [
-            'nama_lengkap',
-            'panggilan',
-            'nim',
-            'whatsapp',
-            'program_studi',
-            'divisi',
-            'sub_divisi'
-        ];
-
-        $isComplete = true;
-        foreach ($requiredFields as $field) {
-            if (empty($profile->$field)) {
-                $isComplete = false;
-                break;
-            }
-        }
+        $isComplete = $profile->isComplete();
 
         return response()->json([
             'status' => 'success',
             'is_complete' => $isComplete,
-            'profile' => $profile,
-            'photo_url' => $profile->photo ? url(Storage::url($profile->photo)) : null
+            'data' => $profile
         ]);
     }
 }

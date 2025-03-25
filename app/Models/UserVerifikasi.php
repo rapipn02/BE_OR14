@@ -9,9 +9,9 @@ class UserVerifikasi extends Model
 {
     use HasFactory;
 
-    protected $table = 'user_verification_documents'; // Pastikan tabelnya sesuai
+    protected $table = 'user_verification_documents';
 
-    protected $fillable = ['user_id', 'krs_path', 'payment_proof_path', 'verification_status', 'rejection_reason', 'verified_at'];
+    protected $fillable = ['user_id', 'krs_path', 'payment_proof_path', 'verification_status', 'neo_path', 'marketing_path', 'rejection_reason', 'verified_at'];
 
 
     public function user()

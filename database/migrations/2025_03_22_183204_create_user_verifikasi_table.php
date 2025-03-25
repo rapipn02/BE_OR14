@@ -17,7 +17,9 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('krs_path');
             $table->string('payment_proof_path');
-            $table->enum('verification_status', ['pending', 'approved', 'rejected'])->default('pending');
+            $table->string('neo_path');
+            $table->string('marketing_path');
+            $table->enum('verification_status', ['diproses', 'disetujui', 'ditolak'])->default('diproses');
             $table->text('rejection_reason')->nullable();
             $table->timestamp('verified_at')->nullable();
             $table->timestamps();

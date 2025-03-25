@@ -21,13 +21,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('logout', [AuthController::class, 'userLogout']);
 
     // Profile routes
-    Route::post('/profile', [UserProfileController::class, 'store']);
-    Route::get('/profile', [UserProfileController::class, 'show']);
-    Route::put('/profile', [UserProfileController::class, 'update']);
+    Route::get('/profile', [UserProfileController::class, 'getProfile']);
+    Route::post('/profile', [UserProfileController::class, 'saveProfile']);
     Route::delete('/profile', [UserProfileController::class, 'destroy']);
     Route::get('/profile/status', [UserProfileController::class, 'checkProfileStatus']);
 
-    // Verification routes
+    // Verification routes for regular users
     Route::post('/verification', [UserVerifikasiController::class, 'uploadFiles']);
     Route::get('/verification', [UserVerifikasiController::class, 'checkVerificationStatus']);
 });

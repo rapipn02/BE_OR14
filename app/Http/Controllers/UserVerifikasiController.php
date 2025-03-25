@@ -18,16 +18,27 @@ class UserVerifikasiController extends Controller
 
         // Validate request
         $request->validate([
-            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
+            'krs_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'payment_proof_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'neo_ig_file' => 'required|file|mimes:jpg,jpeg,png|max:5120',
+            'marketing_ig_file' => 'required|file|mimes:jpg,jpeg,png|max:5120',
         ]);
 
-        // Check if user already has a verification submission
         $verification = UserVerifikasi::where('user_id', $user->id)->first();
 
-        // If there's a previous verification and it was rejected, delete the old document
-        if ($verification && $verification->status === 'rejected') {
-            if ($verification->document_path) {
-                Storage::disk('public')->delete($verification->document_path);
+        // If there's a previous verification and it was rejected, delete the old documents
+        if ($verification && $verification->verification_status === 'ditolak') {
+            if ($verification->krs_path) {
+                Storage::disk('public')->delete($verification->krs_path);
+            }
+            if ($verification->payment_proof_path) {
+                Storage::disk('public')->delete($verification->payment_proof_path);
+            }
+            if ($verification->neo_path) {
+                Storage::disk('public')->delete($verification->neo_path);
+            }
+            if ($verification->marketing_path) {
+                Storage::disk('public')->delete($verification->marketing_path);
             }
             $verification->delete();
             $verification = null;
@@ -37,24 +48,30 @@ class UserVerifikasiController extends Controller
         if ($verification) {
             return response()->json([
                 'success' => false,
-                'message' => 'You already have a ' . $verification->status . ' verification submission'
+                'message' => 'Anda sudah memiliki pengajuan verifikasi dengan status ' . $verification->verification_status
             ], 400);
         }
 
-        // Store the document
-        $documentPath = $request->file('document')->store('verification_documents', 'public');
+        // Store the documents
+        $krsPath = $request->file('krs_file')->store('verification_documents/krs', 'public');
+        $paymentPath = $request->file('payment_proof_file')->store('verification_documents/payment', 'public');
+        $neoPath = $request->file('neo_ig_file')->store('verification_documents/neo_ig', 'public');
+        $marketingPath = $request->file('marketing_ig_file')->store('verification_documents/marketing_ig', 'public');
 
         // Create verification record
         $verification = UserVerifikasi::create([
             'user_id' => $user->id,
-            'document_path' => $documentPath,
-            'status' => 'pending',
-            'notes' => null
+            'krs_path' => $krsPath,
+            'payment_proof_path' => $paymentPath,
+            'neo_path' => $neoPath,
+            'marketing_path' => $marketingPath,
+            'verification_status' => 'diproses',
+            'rejection_reason' => null
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Verification document uploaded successfully',
+            'message' => 'Dokumen verifikasi berhasil diunggah',
             'data' => $verification
         ], 201);
     }
@@ -70,17 +87,64 @@ class UserVerifikasiController extends Controller
         if (!$verification) {
             return response()->json([
                 'success' => false,
-                'message' => 'Verification not submitted yet',
+                'message' => 'Belum ada pengajuan verifikasi',
                 'status' => null
             ]);
         }
 
         return response()->json([
             'success' => true,
-            'status' => $verification->status,
-            'notes' => $verification->notes,
-            'document_url' => $verification->document_path ? Storage::url($verification->document_path) : null,
-            'submitted_at' => $verification->created_at
+            'message' => 'Status verifikasi berhasil diambil',
+            'status' => $verification->verification_status,
+            'rejection_reason' => $verification->rejection_reason,
+            'files' => [
+                'krs' => $verification->krs_path ? Storage::url($verification->krs_path) : null,
+                'payment' => $verification->payment_proof_path ? Storage::url($verification->payment_proof_path) : null,
+                'neo_ig' => $verification->neo_path ? Storage::url($verification->neo_path) : null,
+                'marketing_ig' => $verification->marketing_path ? Storage::url($verification->marketing_path) : null,
+            ],
+            'submitted_at' => $verification->created_at,
+            'verified_at' => $verification->verified_at
+        ]);
+    }
+
+    /**
+     * Admin: Approve verification
+     * (This would require additional middleware for admin access)
+     */
+    public function approveVerification(Request $request, $id)
+    {
+        $verification = UserVerifikasi::findOrFail($id);
+        $verification->verification_status = 'disetujui';
+        $verification->verified_at = now();
+        $verification->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verifikasi berhasil disetujui',
+            'data' => $verification
+        ]);
+    }
+
+    /**
+     * Admin: Reject verification
+     * (This would require additional middleware for admin access)
+     */
+    public function rejectVerification(Request $request, $id)
+    {
+        $request->validate([
+            'rejection_reason' => 'required|string|max:500',
+        ]);
+
+        $verification = UserVerifikasi::findOrFail($id);
+        $verification->verification_status = 'ditolak';
+        $verification->rejection_reason = $request->rejection_reason;
+        $verification->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verifikasi ditolak',
+            'data' => $verification
         ]);
     }
 }
