@@ -15,6 +15,8 @@ Route::controller(AuthController::class)->group(function () {
     Route::get('/verify-email', 'verifyEmail');
 });
 
+Route::post('/resend-verification', [AuthController::class, 'resendVerification']);
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     // Auth routes

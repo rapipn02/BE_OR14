@@ -52,8 +52,7 @@
         .btn {
             display: inline-block;
             background-color: #2E1461;
-            color: white !important;
-            /* !important untuk memastikan ini tidak di-override */
+            color: white;
             text-decoration: none;
             padding: 12px 30px;
             border-radius: 4px;
@@ -69,25 +68,16 @@
         p {
             margin-bottom: 15px;
         }
-
-        /* Tambahan styling khusus untuk memastikan tautan dalam tombol tetap putih */
-        a.btn,
-        a.btn:link,
-        a.btn:visited,
-        a.btn:hover,
-        a.btn:active {
-            color: white !important;
-        }
     </style>
 </head>
 
 <body>
     <div class="email-container">
         <div class="email-header">
-            <img src="https://imgur.com/U7JdiXu.png" alt="Logo" class="logo">
+            <img src="{{ asset('images/or14.svg') }}" alt="Logo" class="logo">
         </div>
         <div class="email-body">
-            <h2>Selamat Datang di Open Recruitment 14 UKM Neo Telemetri</h2>
+            <h2>Selamat Datang di NeoTelemetri!</h2>
             <p>Halo!</p>
             <p>Terima kasih telah mendaftar. Untuk melanjutkan, silakan verifikasi alamat email Anda dengan klik tombol
                 di bawah ini:</p>
@@ -99,7 +89,7 @@
             <p>Jika Anda tidak merasa mendaftar, abaikan email ini.</p>
         </div>
         <div class="email-footer">
-            <p>&copy; {{ date('Y') }} Neo Telemetri. Semua hak dilindungi.</p>
+            <p>&copy; {{ date('Y') }} NeoTelemetri. Semua hak dilindungi.</p>
         </div>
     </div>
 </body>

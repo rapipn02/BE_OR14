@@ -16,6 +16,7 @@ use App\Helper\ResponseHelper;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
@@ -37,7 +38,7 @@ class AuthController extends Controller
 
             Mail::send('emails.verify', ['token' => $verificationToken], function ($message) use ($request) {
                 $message->to($request->email)
-                        ->subject('Verifikasi Email Anda');
+                    ->subject('Verifikasi Email Anda');
             });
 
             DB::commit();
@@ -52,26 +53,116 @@ class AuthController extends Controller
             return ResponseHelper::error(message: 'Terjadi kesalahan, coba lagi.', statuscode: 500);
         }
     }
-
-
-    // VERIFY EMAIL
-    // VERIFY EMAIL
     public function verifyEmail(Request $request)
     {
-        $user = User::where('verification_token', $request->token)->first();
+        try {
+            $user = User::where('verification_token', $request->token)->first();
 
-        if (!$user) {
-            return ResponseHelper::error(message: 'Token tidak valid atau sudah digunakan.', statuscode: 400);
+            if (!$user) {
+                // Redirect to frontend with error parameter
+                return redirect()->away(
+                    config('app.frontend_url') . '/auth?verification=failed&message=Token+tidak+valid'
+                );
+            }
+
+            // Update user status
+            $user->email_verified_at = now();
+            $user->verification_token = null;
+            $user->save();
+
+            // Redirect to frontend with success parameter
+            return redirect()->away(
+                config('app.frontend_url') . '/auth?verification=success'
+            );
+        } catch (\Exception $e) {
+            Log::error('Email verification failed: ' . $e->getMessage());
+
+            // Redirect to frontend with error
+            return redirect()->away(
+                config('app.frontend_url') . '/auth?verification=failed&message=Terjadi+kesalahan'
+            );
+        }
+    }
+
+    /**
+     * Resend verification email
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+
+    public function resendVerification(Request $request)
+    {
+        // Validate request
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        if ($validator->fails()) {
+            return ResponseHelper::error(
+                message: 'Email tidak valid atau tidak terdaftar.',
+                data: $validator->errors(),
+                statuscode: 422
+            );
         }
 
-        // Pastikan update berjalan
-        $user->email_verified_at = now();
-        $user->verification_token = null;
+        $email = $request->email;
+        $user = User::where('email', $email)->first();
 
-        if ($user->save()) {
-            return ResponseHelper::success(message: 'Email berhasil diverifikasi. Anda sekarang bisa login.', statuscode: 200);
-        } else {
-            return ResponseHelper::error(message: 'Gagal memperbarui status verifikasi.', statuscode: 500);
+        // Check if user exists
+        if (!$user) {
+            return ResponseHelper::error(
+                message: 'Email tidak terdaftar.',
+                statuscode: 404
+            );
+        }
+
+        // Check if email is already verified
+        if ($user->email_verified_at !== null) {
+            return ResponseHelper::error(
+                message: 'Email ini sudah diverifikasi. Silakan login.',
+                statuscode: 400
+            );
+        }
+
+        // Check if last verification email was sent within the last minute
+        // You can store this in the database or use a cache system
+        // For this example, we'll use a simple session-based approach
+        $lastSent = $request->session()->get('last_verification_sent_' . $user->id);
+        if ($lastSent && now()->diffInSeconds(\Carbon\Carbon::parse($lastSent)) < 60) {
+            $timeLeft = 60 - now()->diffInSeconds(\Carbon\Carbon::parse($lastSent));
+            return ResponseHelper::error(
+                message: "Harap tunggu {$timeLeft} detik sebelum mengirim email baru.",
+                statuscode: 429
+            );
+        }
+
+        try {
+            // Generate new verification token
+            $verificationToken = Str::random(64);
+            $user->verification_token = $verificationToken;
+            $user->save();
+
+            // Send verification email
+            Mail::send('emails.verify', ['token' => $verificationToken], function ($message) use ($email) {
+                $message->to($email)
+                    ->subject('Verifikasi Email Anda');
+            });
+
+            // Store last sent timestamp
+            $request->session()->put('last_verification_sent_' . $user->id, now());
+
+            return ResponseHelper::success(
+                message: 'Link verifikasi baru telah dikirim ke email Anda.',
+                statuscode: 200
+            );
+        } catch (Exception $e) {
+            Log::error('Gagal mengirim email verifikasi: ' . $e->getMessage() . ' - line ' . $e->getLine());
+
+            return ResponseHelper::error(
+                message: 'Terjadi kesalahan saat mengirim email verifikasi. Silakan coba lagi.',
+                statuscode: 500
+            );
         }
     }
 
