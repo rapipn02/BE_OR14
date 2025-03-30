@@ -88,23 +88,28 @@ class UserVerifikasiController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Belum ada pengajuan verifikasi',
-                'status' => null
+                'data' => null
             ]);
         }
+
+        // Get base URL from config
+        $baseUrl = config('app.url');
 
         return response()->json([
             'success' => true,
             'message' => 'Status verifikasi berhasil diambil',
-            'status' => $verification->verification_status,
-            'rejection_reason' => $verification->rejection_reason,
-            'files' => [
-                'krs' => $verification->krs_path ? Storage::url($verification->krs_path) : null,
-                'payment' => $verification->payment_proof_path ? Storage::url($verification->payment_proof_path) : null,
-                'neo_ig' => $verification->neo_path ? Storage::url($verification->neo_path) : null,
-                'marketing_ig' => $verification->marketing_path ? Storage::url($verification->marketing_path) : null,
-            ],
-            'submitted_at' => $verification->created_at,
-            'verified_at' => $verification->verified_at
+            'data' => [
+                'status' => $verification->verification_status,
+                'rejection_reason' => $verification->rejection_reason,
+                'files' => [
+                    'krs' => $verification->krs_path ? $baseUrl . '/storage/' . $verification->krs_path : null,
+                    'payment' => $verification->payment_proof_path ? $baseUrl . '/storage/' . $verification->payment_proof_path : null,
+                    'neo_ig' => $verification->neo_path ? $baseUrl . '/storage/' . $verification->neo_path : null,
+                    'marketing_ig' => $verification->marketing_path ? $baseUrl . '/storage/' . $verification->marketing_path : null,
+                ],
+                'submitted_at' => $verification->created_at,
+                'verified_at' => $verification->verified_at
+            ]
         ]);
     }
 

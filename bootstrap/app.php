@@ -12,6 +12,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Daftarkan CORS sebagai middleware global
+        $middleware->use([
+            \App\Http\Middleware\Cors::class,
+        ]);
+
+        // Daftarkan alias untuk middleware lain
         $middleware->alias([
             // ... other aliases
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
