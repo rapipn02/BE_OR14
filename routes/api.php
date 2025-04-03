@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ExamController;
+use App\Http\Controllers\TimelineController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UserVerifikasiController;
 use Illuminate\Support\Facades\Route;
@@ -17,6 +18,9 @@ Route::controller(AuthController::class)->group(function () {
 });
 
 Route::post('/resend-verification', [AuthController::class, 'resendVerification']);
+
+// Get public timelines - accessible without authentication
+Route::get('/timelines', [TimelineController::class, 'getPublicTimelines']);
 
 // For development and debugging - can be removed in production
 Route::get('/admin/test', function () {
@@ -54,58 +58,18 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// Create a debug/test route outside of auth for testing
-Route::get('/admin/users/fake', function () {
-    $fakeUsers = [];
-
-    for ($i = 1; $i <= 10; $i++) {
-        $fakeUsers[] = [
-            'id' => $i,
-            'name' => "User $i",
-            'email' => "user$i@example.com",
-            'created_at' => now()->subDays(rand(1, 30))->toDateTimeString(),
-            'email_verified_at' => now()->subDays(rand(1, 29))->toDateTimeString(),
-            'profile' => [
-                'nama_lengkap' => "Full Name $i",
-                'panggilan' => "Nick $i",
-                'nim' => "A" . str_pad($i, 8, '0', STR_PAD_LEFT),
-                'whatsapp' => "08123456" . str_pad($i, 4, '0', STR_PAD_LEFT),
-                'program_studi' => "Program Study $i"
-            ],
-            'verification' => rand(0, 3) > 0 ? [
-                'id' => $i,
-                'verification_status' => ['diproses', 'disetujui', 'ditolak'][rand(0, 2)],
-                'created_at' => now()->subDays(rand(1, 20))->toDateTimeString(),
-                'verified_at' => rand(0, 1) ? now()->subDays(rand(1, 10))->toDateTimeString() : null,
-                'rejection_reason' => rand(0, 1) ? "Some rejection reason $i" : null
-            ] : null,
-            'exams' => rand(0, 1) ? [
-                [
-                    'id' => $i,
-                    'score' => rand(50, 100),
-                    'division' => [
-                        'id' => rand(1, 3),
-                        'name' => "Division " . rand(1, 3)
-                    ]
-                ]
-            ] : []
-        ];
-    }
-
-    return response()->json([
-        'success' => true,
-        'data' => [
-            'current_page' => 1,
-            'data' => $fakeUsers,
-            'last_page' => 3,
-            'per_page' => 10,
-            'total' => 30
-        ]
-    ]);
-});
 
 // Admin routes - separated to avoid nesting middleware
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
     Route::get('/users', [AdminController::class, 'getUsers']);
     Route::post('/verification/{id}', [AdminController::class, 'processVerification']);
+
+    // Timeline Management
+    Route::prefix('timeline')->group(function () {
+        Route::get('/', [TimelineController::class, 'getTimelines']);
+        Route::post('/', [TimelineController::class, 'createTimeline']);
+        Route::put('/{id}', [TimelineController::class, 'updateTimeline']);
+        Route::delete('/{id}', [TimelineController::class, 'deleteTimeline']);
+        Route::post('/reorder', [TimelineController::class, 'reorderTimelines']);
+    });
 });
