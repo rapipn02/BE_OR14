@@ -20,7 +20,7 @@ class AdminController extends Controller
                 'user_id' => auth()->id()
             ]);
 
-            $query = User::where('role', '!=', 'admin') // Add this line to exclude admins
+            $query = User::where('role', '!=', 'admin') // Exclude admins
                 ->with(['profile', 'verification', 'exams' => function ($q) {
                     $q->with('division')->orderBy('created_at', 'desc');
                 }]);
@@ -48,8 +48,17 @@ class AdminController extends Controller
                 if ($request->status === 'not_submitted') {
                     $query->whereDoesntHave('verification');
                 } else {
-                    $query->whereHas('verification', function ($q) use ($request) {
-                        $q->where('verification_status', $request->status);
+                    // Map the frontend status values to backend status values
+                    $statusMap = [
+                        'pending' => 'diproses',
+                        'approved' => 'disetujui',
+                        'rejected' => 'ditolak'
+                    ];
+
+                    $dbStatus = $statusMap[$request->status] ?? $request->status;
+
+                    $query->whereHas('verification', function ($q) use ($dbStatus) {
+                        $q->where('verification_status', $dbStatus);
                     });
                 }
             }
@@ -99,7 +108,7 @@ class AdminController extends Controller
 
             $verification = UserVerifikasi::findOrFail($id);
 
-            // Map the status values
+            // Map the frontend status values to backend status values
             $statusMap = [
                 'approved' => 'disetujui',
                 'rejected' => 'ditolak'

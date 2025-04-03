@@ -20,7 +20,7 @@ class DivisionSeeder extends Seeder
             ],
             [
                 'code' => 'multimedia',
-                'name' => 'Multimedia dan Design',
+                'name' => 'Multimedia dan Desain',
                 'description' => 'Divisi untuk desain grafis dan media'
             ],
             [
