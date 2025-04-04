@@ -307,11 +307,10 @@ class ExamController extends Controller
         // Get questions for the division
         $questions = Question::where('division_id', $exam->division_id)
             ->with(['options' => function ($query) {
-                $query->select('id', 'question_id', 'option_text'); // Don't include is_correct
+                $query->select('id', 'question_id', 'option_text');
             }])
             ->get(['id', 'question_text']);
 
-        // Get user's answers if any
         $userAnswers = ExamAnswer::where('exam_id', $exam->id)
             ->pluck('option_id', 'question_id')
             ->toArray();
