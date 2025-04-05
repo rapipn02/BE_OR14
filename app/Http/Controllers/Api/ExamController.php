@@ -20,12 +20,94 @@ class ExamController extends Controller
      */
     public function getDivisions()
     {
-        $divisions = Division::all(['id', 'code', 'name', 'description']);
+        $divisions = Division::all(['id', 'code', 'name', 'description'])
+            ->map(function ($division) {
+                // Normalisasi nama divisi
+                $division->name = $this->normalizeDivisionName($division->name);
+                return $division;
+            });
 
         return response()->json([
             'status' => 'success',
             'data' => $divisions
         ]);
+    }
+
+    public function checkUserExamStatus(Request $request)
+    {
+        $user = Auth::user();
+
+        // Check for ongoing exam
+        $ongoingExam = Exam::where('user_id', $user->id)
+            ->where('status', 'ongoing')
+            ->first();
+
+        if ($ongoingExam) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'has_taken_exam' => false, // Masih dalam proses
+                    'exam_status' => 'ongoing',
+                    'exam_id' => $ongoingExam->id,
+                    'division_id' => $ongoingExam->division_id,
+                    'division_name' => $ongoingExam->division->name
+                ]
+            ]);
+        }
+
+        // Check if user has completed any exam
+        if ($user->has_taken_exam) {
+            $latestExam = Exam::where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'expired'])
+                ->latest()
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'has_taken_exam' => true,
+                    'exam_status' => 'completed',
+                    'exam_id' => $latestExam->id,
+                    'division_id' => $latestExam->division_id,
+                    'division_name' => $latestExam->division->name,
+                    'exam_result' => [
+                        'score' => $latestExam->score,
+                        'correct_answers' => $latestExam->correct_answers,
+                        'incorrect_answers' => $latestExam->incorrect_answers,
+                        'start_time' => $latestExam->start_time->format('Y-m-d H:i:s'),
+                        'end_time' => $latestExam->end_time?->format('Y-m-d H:i:s'),
+                    ]
+                ]
+            ]);
+        }
+
+        // User hasn't taken any exam
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'has_taken_exam' => false
+            ]
+        ]);
+    }
+
+    private function normalizeDivisionName($name)
+    {
+        // Contoh normalisasi nama
+        $map = [
+            'programming' => 'Programming',
+            'multimedia' => 'Multimedia & Desain',
+            'sistem komputer' => 'Sistem Komputer & Jaringan'
+        ];
+
+        $lowerName = strtolower($name);
+
+        foreach ($map as $key => $value) {
+            if (str_contains($lowerName, $key)) {
+                return $value;
+            }
+        }
+
+        return $name;
     }
 
     /**
@@ -46,6 +128,7 @@ class ExamController extends Controller
         }
 
         DB::beginTransaction();
+
         try {
             // Calculate score
             $answers = ExamAnswer::where('exam_id', $exam->id)->get();
@@ -66,6 +149,9 @@ class ExamController extends Controller
             $exam->status = 'completed';
             $exam->save();
 
+            // Update user's exam status
+            Auth::user()->updateExamStatus();
+
             DB::commit();
 
             return response()->json([
@@ -83,6 +169,7 @@ class ExamController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to complete exam: ' . $e->getMessage()
@@ -168,30 +255,40 @@ class ExamController extends Controller
             ], 422);
         }
 
-        // Check if user has an ongoing exam
-        $ongoingExam = Exam::where('user_id', Auth::id())
+        $user = Auth::user();
+
+        // Check if user has already completed any exam
+        if ($user->has_taken_exam) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Anda sudah menyelesaikan ujian sebelumnya'
+            ], 400);
+        }
+
+        // Check for ongoing exam
+        $ongoingExam = Exam::where('user_id', $user->id)
             ->where('status', 'ongoing')
             ->first();
 
         if ($ongoingExam) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'You already have an ongoing exam'
+                'message' => 'Anda memiliki ujian yang sedang berlangsung'
             ], 400);
         }
 
-        // Create a new exam
+        // Create new exam
         $exam = Exam::create([
-            'user_id' => Auth::id(),
+            'user_id' => $user->id,
             'division_id' => $request->division_id,
-            'duration' => $request->duration ?? 60, // Default 60 menit jika tidak diisi
+            'duration' => $request->duration ?? 60,
             'start_time' => Carbon::now(),
             'status' => 'ongoing'
         ]);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Exam started successfully',
+            'message' => 'Ujian berhasil dimulai',
             'data' => [
                 'exam_id' => $exam->id,
                 'start_time' => $exam->start_time,
@@ -243,6 +340,7 @@ class ExamController extends Controller
 
         // Check if option belongs to the question
         $option = $question->options()->where('id', $request->option_id)->first();
+
         if (!$option) {
             return response()->json([
                 'status' => 'error',
@@ -340,6 +438,7 @@ class ExamController extends Controller
     private function autoFinishExpiredExam($examId)
     {
         $exam = Exam::find($examId);
+
         if (!$exam || $exam->status !== 'ongoing') {
             return;
         }

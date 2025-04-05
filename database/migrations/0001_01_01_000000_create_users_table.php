@@ -21,6 +21,7 @@ return new class extends Migration
             $table->string('password');
             $table->string('verification_token')->nullable();
             $table->enum('role', ['peserta', 'admin'])->default('peserta');
+            $table->boolean('has_taken_exam')->default(false);
             $table->rememberToken();
             $table->timestamps();
         });

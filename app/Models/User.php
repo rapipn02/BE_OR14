@@ -18,7 +18,8 @@ class User extends Authenticatable
         'password',
         'verification_token',
         'email_verified_at',
-        'role'
+        'role',
+        'has_taken_exam'
     ];
 
     protected $hidden = [
@@ -35,9 +36,18 @@ class User extends Authenticatable
         return $this->hasOne(UserProfile::class);
     }
 
+    public function updateExamStatus()
+    {
+        $hasTakenExam = $this->exams()
+            ->whereIn('status', ['completed', 'expired'])
+            ->exists();
+
+        $this->update(['has_taken_exam' => $hasTakenExam]);
+    }
+
     public function verification()
     {
-    return $this->hasOne(UserVerifikasi::class);
+        return $this->hasOne(UserVerifikasi::class);
     }
 
     public function exams()

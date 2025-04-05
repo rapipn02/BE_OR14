@@ -55,9 +55,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/finish', [ExamController::class, 'finishExam']);
         Route::get('/result/{examId?}', [ExamController::class, 'getExamResult']);
         Route::get('/history', [ExamController::class, 'getExamHistory']);
+        Route::get('/status', [ExamController::class, 'checkUserExamStatus']);
     });
 });
-
 
 // Admin routes - separated to avoid nesting middleware
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
