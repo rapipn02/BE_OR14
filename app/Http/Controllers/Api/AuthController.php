@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use App\Helper\ResponseHelper;
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
@@ -33,8 +34,6 @@ class AuthController extends Controller
                 'password' => Hash::make($request->password),
                 'verification_token' => $verificationToken,
             ]);
-
-            Log::info('User berhasil dibuat', ['user' => $user]);
 
             Mail::send('emails.verify', ['token' => $verificationToken], function ($message) use ($request) {
                 $message->to($request->email)
@@ -125,9 +124,6 @@ class AuthController extends Controller
             );
         }
 
-        // Check if last verification email was sent within the last minute
-        // You can store this in the database or use a cache system
-        // For this example, we'll use a simple session-based approach
         $lastSent = $request->session()->get('last_verification_sent_' . $user->id);
         if ($lastSent && now()->diffInSeconds(\Carbon\Carbon::parse($lastSent)) < 60) {
             $timeLeft = 60 - now()->diffInSeconds(\Carbon\Carbon::parse($lastSent));
@@ -138,7 +134,6 @@ class AuthController extends Controller
         }
 
         try {
-            // Generate new verification token
             $verificationToken = Str::random(64);
             $user->verification_token = $verificationToken;
             $user->save();
@@ -221,49 +216,116 @@ class AuthController extends Controller
     }
 
     // SEND PASSWORD RESET LINK
+    // SEND PASSWORD RESET LINK
     public function sendResetLink(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email|exists:users,email',
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email|exists:users,email',
+            ]);
 
-        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+            if ($validator->fails()) {
+                return ResponseHelper::error(
+                    message: 'Email tidak valid atau tidak terdaftar.',
+                    data: $validator->errors(),
+                    statuscode: 422
+                );
+            }
 
-        $token = Str::random(60);
-        DB::table('password_reset_tokens')->insert([
-            'email' => $request->email,
-            'token' => Hash::make($token),
-            'created_at' => now(),
-        ]);
+            // Hapus token reset password yang sudah ada untuk email ini
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
 
-        Mail::raw("Gunakan token ini untuk mereset password Anda: $token", function ($message) use ($request) {
-            $message->to($request->email)->subject('Reset Password');
-        });
+            // Buat token baru
+            $token = Str::random(60);
 
-        return ResponseHelper::success(message: 'Link reset password telah dikirim ke email.', statuscode: 200);
+            // Simpan token ke database dengan hash
+            DB::table('password_reset_tokens')->insert([
+                'email' => $request->email,
+                'token' => $token, // Simpan token tanpa hash untuk mempermudah verifikasi
+                'created_at' => now(),
+            ]);
+
+            // Kirim email dengan template HTML
+            Mail::send('emails.reset-password', ['token' => $token, 'email' => $request->email], function ($message) use ($request) {
+                $message->to($request->email)
+                    ->subject('Reset Password - Neotelemetri');
+            });
+
+            return ResponseHelper::success(
+                message: 'Link reset password telah dikirim ke email Anda.',
+                statuscode: 200
+            );
+        } catch (Exception $e) {
+            Log::error('Gagal mengirim email reset password: ' . $e->getMessage() . ' - line ' . $e->getLine());
+
+            return ResponseHelper::error(
+                message: 'Terjadi kesalahan saat mengirim email reset password. Silakan coba lagi.',
+                statuscode: 500
+            );
+        }
     }
 
     // RESET PASSWORD
     public function resetPassword(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email|exists:users,email',
-            'token' => 'required',
-            'password' => 'required|min:6|confirmed',
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email|exists:users,email',
+                'token' => 'required',
+                'password' => 'required|min:6|confirmed',
+            ]);
 
-        $resetToken = DB::table('password_reset_tokens')->where('email', $request->email)->first();
+            if ($validator->fails()) {
+                return ResponseHelper::error(
+                    message: 'Validasi gagal. Periksa kembali input Anda.',
+                    data: $validator->errors(),
+                    statuscode: 422
+                );
+            }
 
-        if (!$resetToken || !Hash::check($request->token, $resetToken->token)) {
-            return ResponseHelper::error(message: 'Token reset password tidak valid atau sudah kedaluwarsa.', statuscode: 400);
+            $resetToken = DB::table('password_reset_tokens')
+                ->where('email', $request->email)
+                ->first();
+
+            // Cek apakah token ada dan valid
+            if (!$resetToken || $resetToken->token !== $request->token) {
+                return ResponseHelper::error(
+                    message: 'Token reset password tidak valid atau sudah kedaluwarsa.',
+                    statuscode: 400
+                );
+            }
+
+            // Cek apakah token sudah kedaluwarsa (60 menit)
+            $tokenCreatedAt = Carbon::parse($resetToken->created_at);
+            if (now()->diffInMinutes($tokenCreatedAt) > 60) {
+                // Hapus token yang sudah kedaluwarsa
+                DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+                return ResponseHelper::error(
+                    message: 'Token reset password sudah kedaluwarsa. Silakan request reset password baru.',
+                    statuscode: 400
+                );
+            }
+
+            // Update password user
+            User::where('email', $request->email)->update([
+                'password' => Hash::make($request->password),
+            ]);
+
+            // Hapus token yang sudah digunakan
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+            return ResponseHelper::success(
+                message: 'Password berhasil direset. Silakan login dengan password baru Anda.',
+                statuscode: 200
+            );
+        } catch (Exception $e) {
+            Log::error('Gagal reset password: ' . $e->getMessage() . ' - line ' . $e->getLine());
+
+            return ResponseHelper::error(
+                message: 'Terjadi kesalahan saat reset password. Silakan coba lagi.',
+                statuscode: 500
+            );
         }
-
-        User::where('email', $request->email)->update([
-            'password' => Hash::make($request->password),
-        ]);
-
-        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
-
-        return ResponseHelper::success(message: 'Password berhasil direset.', statuscode: 200);
     }
 }

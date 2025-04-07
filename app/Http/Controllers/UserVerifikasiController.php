@@ -18,10 +18,10 @@ class UserVerifikasiController extends Controller
         try {
             // Validate request
             $request->validate([
-                'krs' => 'required|file|max:10240', // 10MB max
-                'payment_proof' => 'required|file|max:10240',
-                'neo_ig' => 'required|file|max:10240',
-                'marketing_ig' => 'required|file|max:10240',
+                'krs' => 'required|file|max:1024',
+                'payment_proof' => 'required|file|max:1024',
+                'neo_ig' => 'required|file|max:1024',
+                'marketing_ig' => 'required|file|max:1024',
             ]);
 
             $user = Auth::user();

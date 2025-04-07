@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verifikasi Akun UKM Neo Telemetri</title>
+    <title>Reset Password - UKM Neo Telemetri</title>
     <style>
         body {
             font-family: Arial, Helvetica, sans-serif;
@@ -105,32 +105,34 @@
             <img src="https://imgur.com/U7JdiXu.png" alt="Logo UKM Neo Telemetri" class="logo">
         </div>
         <div class="email-body">
-            <h2>Verifikasi Email - Open Recruitment 14 UKM Neo Telemetri</h2>
+            <h2>Reset Password - UKM Neo Telemetri</h2>
             <p>Halo,</p>
-            <p>Terima kasih telah mendaftar pada Open Recruitment 14 UKM Neo Telemetri. Untuk melanjutkan proses
-                pendaftaran, mohon verifikasi alamat email Anda dengan klik tombol di bawah ini:</p>
-
+            <p>Kami menerima permintaan untuk mengatur ulang password akun Anda. Klik tombol di bawah untuk melanjutkan
+                proses reset password:</p>
             <div style="text-align: center;">
-                <a href="{{ url('/api/verify-email?token=' . $token) }}" class="btn">
-                    Verifikasi Email
+                <a href="{{ config('app.frontend_url') }}/reset-password?token={{ $token }}&email={{ $email }}"
+                    class="btn">
+                    Reset Password
                 </a>
             </div>
-            <p>Email verifikasi ini akan kedaluwarsa dalam 24 jam.</p>
+            <p>Link reset password ini akan kedaluwarsa dalam 60 menit.</p>
+            <p>Jika Anda tidak meminta reset password, Anda dapat mengabaikan email ini dan tidak ada perubahan yang
+                akan dilakukan pada akun Anda.</p>
 
-            <p>Jika Anda tidak pernah mendaftar atau tidak mengenali aktivitas ini, Anda dapat mengabaikan email ini.
-            </p>
 
             <div class="contact-info">
                 <p>Jika Anda memiliki pertanyaan, silakan hubungi kami di:</p>
                 <p>Email: <a href="mailto:or.neotelemetri@gmail.com">or.neotelemetri@gmail.com</a><br>
                     WhatsApp: 089515908397 (Berka)</p>
             </div>
-
             <div class="social-links">
                 <p>Ikuti kami di:
                     <a href="https://instagram.com/neotelemetri">Instagram Neo Telemetri</a>
                 </p>
             </div>
+        </div>
+        <div class="email-footer">
+            <p>&copy; {{ date('Y') }} UKM Neo Telemetri. All rights reserved.</p>
         </div>
     </div>
 </body>
